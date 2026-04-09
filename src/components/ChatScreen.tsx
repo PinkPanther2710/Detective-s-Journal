@@ -2,6 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, User, Bot, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Message, Clue, Suspect } from '../types';
+import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 interface ChatScreenProps {
   clues: Clue[];
@@ -56,72 +59,51 @@ export default function ChatScreen({ clues, suspects }: ChatScreenProps) {
   const getAIResponse = async (userMessage: string) => {
     setIsTyping(true);
     
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      const context = {
+        clues: clues.map(c => ({ title: c.title, description: c.description })),
+        suspects: suspects.map(s => ({ name: s.name, alias: s.alias, status: s.status, bio: s.bio, linkedClues: clues.filter(c => s.linkedClueIds.includes(c.id)).map(c => c.title) }))
+      };
 
-    const lowerMsg = userMessage.toLowerCase();
-    let response = "";
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: `Você é o Investigador Chefe, um mentor experiente em um jogo de caça ao tesouro e investigação. 
+            Seu tom é encorajador, misterioso e profissional. 
+            Ajude o jogador a conectar os pontos, mas não dê as respostas de bandeja. 
+            Idioma: Português (Brasil).
+            
+            Contexto atual da investigação:
+            Pistas coletadas: ${JSON.stringify(context.clues)}
+            Suspeitos fichados: ${JSON.stringify(context.suspects)}
+            
+            Mensagem do Jogador: ${userMessage}` }]
+          }
+        ],
+      });
 
-    // Check if user is asking about specific suspects
-    const mentionedSuspect = suspects.find(s => 
-      lowerMsg.includes(s.name.toLowerCase()) || 
-      lowerMsg.includes(s.alias.toLowerCase())
-    );
+      const aiMsg: Message = {
+        id: crypto.randomUUID(),
+        text: response.text || "Desculpe, Investigador. Houve uma falha na comunicação. O que você dizia?",
+        sender: 'ai',
+        timestamp: Date.now(),
+      };
 
-    // Check if user is asking about specific clues
-    const mentionedClue = clues.find(clue => 
-      lowerMsg.includes(clue.title.toLowerCase()) || 
-      clue.title.toLowerCase().split(' ').some(word => word.length > 3 && lowerMsg.includes(word))
-    );
-
-    if (mentionedSuspect) {
-      const linkedClues = clues.filter(c => mentionedSuspect.linkedClueIds.includes(c.id));
-      const clueList = linkedClues.length > 0 
-        ? ` Ele está vinculado às pistas: ${linkedClues.map(c => `"${c.title}"`).join(', ')}.`
-        : " Ainda não vinculamos nenhuma pista direta a ele.";
-      
-      response = `Analisando o dossiê de "${mentionedSuspect.name}" (vulgo ${mentionedSuspect.alias}). Status atual: ${mentionedSuspect.status}.${clueList} O que o comportamento dele te diz sobre o crime?`;
-    } else if (mentionedClue) {
-      const relatedSuspects = suspects.filter(s => s.linkedClueIds.includes(mentionedClue.id));
-      const suspectList = relatedSuspects.length > 0
-        ? ` Esta pista aponta para: ${relatedSuspects.map(s => s.name).join(', ')}.`
-        : " Ainda não conseguimos ligar esta evidência a nenhum suspeito específico.";
-
-      response = `Ah, a "${mentionedClue.title}". Você anotou: "${mentionedClue.description}".${suspectList} Acha que há algo mais escondido nesse detalhe?`;
-    } else if (lowerMsg.includes('principal suspeito') || lowerMsg.includes('quem é o culpado')) {
-      const mainSuspect = suspects.find(s => s.status === 'Principal Suspeito');
-      if (mainSuspect) {
-        response = `Nossas atenções estão voltadas para "${mainSuspect.name}". Com ${mainSuspect.linkedClueIds.length} pistas vinculadas, ele é nossa melhor aposta no momento. Mas cuidado, as aparências enganam.`;
-      } else {
-        response = "Ainda não temos um suspeito principal definido. Precisamos de mais evidências concretas para apontar o dedo.";
-      }
-    } else if (lowerMsg.includes('dica') || lowerMsg.includes('ajuda') || lowerMsg.includes('pista') || lowerMsg.includes('help')) {
-      if (clues.length === 0) {
-        response = "O rastro está frio. Você ainda não documentou nenhuma evidência. Use sua câmera para capturar qualquer coisa que pareça fora de lugar.";
-      } else {
-        const randomClue = clues[Math.floor(Math.random() * clues.length)];
-        response = `Você coletou ${clues.length} evidências. Eu sugiro reexaminar a "${randomClue.title}". Você a descreveu como "${randomClue.description}", mas será que há uma conexão com o local que estamos deixando passar?`;
-      }
-    } else {
-      const genericResponses = [
-        "Conte-me mais sobre o ambiente onde você encontrou isso.",
-        "Observação interessante. Isso se alinha com as outras pistas que temos?",
-        "Continue cavando. Cada detalhe importa em um caso como este.",
-        "Estou cruzando isso com nosso banco de dados. Enquanto isso, o que mais você vê?",
-        "Foque nas evidências físicas. Você já escaneou todos os códigos QR disponíveis?"
-      ];
-      response = genericResponses[Math.floor(Math.random() * genericResponses.length)];
+      setMessages(prev => [...prev, aiMsg]);
+    } catch (error) {
+      console.error("Erro na resposta da IA:", error);
+      const errorMsg: Message = {
+        id: crypto.randomUUID(),
+        text: "O sinal está fraco aqui no campo. Tente me contatar novamente em um momento.",
+        sender: 'ai',
+        timestamp: Date.now(),
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setIsTyping(false);
     }
-
-    const aiMsg: Message = {
-      id: crypto.randomUUID(),
-      text: response,
-      sender: 'ai',
-      timestamp: Date.now(),
-    };
-
-    setMessages(prev => [...prev, aiMsg]);
-    setIsTyping(false);
   };
 
   const handleSend = () => {
