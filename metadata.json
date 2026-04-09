@@ -1,0 +1,5 @@
+{
+  "name": "Detective's Journal: Treasure Hunt",
+  "description": "An immersive investigation app for collecting clues, scanning QR codes, and solving mysteries in the physical world.",
+  "requestFramePermissions": ["camera"]
+}
