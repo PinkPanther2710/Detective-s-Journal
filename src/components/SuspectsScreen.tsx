@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { UserPlus, User, Shield, AlertTriangle, CheckCircle, X, Link as LinkIcon, Plus, Trash2, Camera } from 'lucide-react';
+import { UserPlus, User, Shield, AlertTriangle, CheckCircle, X, Link as LinkIcon, Plus, Trash2, Camera, Sparkles, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Suspect, Clue, SuspectStatus } from '../types';
 import SuspectPhotoPicker from './SuspectPhotoPicker';
+import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 interface SuspectsScreenProps {
   suspects: Suspect[];
@@ -15,6 +18,8 @@ interface SuspectsScreenProps {
 export default function SuspectsScreen({ suspects, clues, onAddSuspect, onUpdateSuspect, onDeleteSuspect }: SuspectsScreenProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [isPickingPhoto, setIsPickingPhoto] = useState(false);
+  const [isGeneratingBio, setIsGeneratingBio] = useState(false);
+  const [bioKeywords, setBioKeywords] = useState('');
   const [photoTarget, setPhotoTarget] = useState<'new' | 'edit'>('new');
   const [selectedSuspect, setSelectedSuspect] = useState<Suspect | null>(null);
   const [newSuspect, setNewSuspect] = useState<Partial<Suspect>>({
@@ -47,6 +52,7 @@ export default function SuspectsScreen({ suspects, clues, onAddSuspect, onUpdate
     if (newSuspect.name) {
       onAddSuspect(newSuspect as Omit<Suspect, 'id' | 'timestamp'>);
       setIsAdding(false);
+      setBioKeywords('');
       setNewSuspect({
         name: '',
         alias: '',
@@ -56,6 +62,29 @@ export default function SuspectsScreen({ suspects, clues, onAddSuspect, onUpdate
         linkedClueIds: [],
         photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=400'
       });
+    }
+  };
+
+  const handleGenerateBio = async () => {
+    if (!bioKeywords.trim()) return;
+
+    setIsGeneratingBio(true);
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Gere uma biografia detalhada e imersiva para um suspeito de um crime em um jogo de investigação. 
+        O tom deve ser profissional, como um relatório policial ou dossiê confidencial. 
+        Use as seguintes palavras-chave: ${bioKeywords}. 
+        O idioma deve ser Português (Brasil). Seja conciso mas detalhado (máximo 3 parágrafos).`,
+      });
+
+      if (response.text) {
+        setNewSuspect(prev => ({ ...prev, bio: response.text }));
+      }
+    } catch (error) {
+      console.error("Erro ao gerar biografia:", error);
+    } finally {
+      setIsGeneratingBio(false);
     }
   };
 
@@ -197,12 +226,32 @@ export default function SuspectsScreen({ suspects, clues, onAddSuspect, onUpdate
                   </select>
                 </div>
                 <div>
+                  <label className="block text-[10px] font-bold uppercase mb-1">Palavras-chave para Biografia (IA)</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      value={bioKeywords}
+                      onChange={e => setBioKeywords(e.target.value)}
+                      placeholder="ex: ex-militar, nervoso, cicatriz..."
+                      className="flex-1 bg-transparent border-b border-detective-ink/30 p-2 typewriter outline-none focus:border-detective-accent text-sm"
+                    />
+                    <button 
+                      onClick={handleGenerateBio}
+                      disabled={isGeneratingBio || !bioKeywords.trim()}
+                      className="p-2 bg-detective-accent text-white rounded-sm shadow-md disabled:opacity-50 flex items-center justify-center"
+                      title="Gerar Biografia com IA"
+                    >
+                      {isGeneratingBio ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                    </button>
+                  </div>
+                </div>
+                <div>
                   <label className="block text-[10px] font-bold uppercase mb-1">Biografia / Antecedentes</label>
                   <textarea 
                     value={newSuspect.bio}
                     onChange={e => setNewSuspect({...newSuspect, bio: e.target.value})}
                     rows={3}
-                    className="w-full bg-transparent border-b border-detective-ink/30 p-2 typewriter outline-none focus:border-detective-accent"
+                    className="w-full bg-transparent border-b border-detective-ink/30 p-2 typewriter outline-none focus:border-detective-accent text-sm"
                   />
                 </div>
                 <button 
