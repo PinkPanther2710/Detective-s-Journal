@@ -1,35 +1,36 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Inicializa o SDK do Gemini com a chave do ambiente
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-
-export const getAIResponse = async (userMessage, chatHistory) => {
+export const getAIResponse = async (userMessage, chatHistory = []) => {
   try {
-    // Definimos o modelo (usando a versão mais estável e rápida)
+    // 1. Puxamos a chave de forma segura
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+    // 2. Trava de segurança: Se a chave não existir, não quebra o app, apenas avisa no chat
+    if (!apiKey) {
+      console.error("🚨 ALERTA: Chave do Gemini não encontrada no arquivo .env ou na Vercel.");
+      return "Central, aqui é o sistema. Falha de autenticação. Verifique os cabos (API Key).";
+    }
+
+    // 3. Inicializa APENAS na hora de enviar a mensagem
+    const genAI = new GoogleGenerativeAI(apiKey);
+    
     const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash",
-      systemInstruction: "Você é o Detetive Chefe. Um mentor misterioso e profissional. Use um tom de relatório policial confidencial. Nunca dê a resposta de bandeja, instigue o investigador a pensar."
+      systemInstruction: "Você é o Detetive Chefe. Um mentor misterioso e profissional. Use um tom de relatório policial."
     });
 
-    // O Gemini exige que o histórico tenha o formato { role, parts: [{ text }] }
-    // E os papéis permitidos são apenas "user" ou "model"
     const formattedHistory = chatHistory.map(msg => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }]
+      parts: [{ text: msg.content || "..." }] // Evita erros se o texto vier nulo
     }));
 
-    // Iniciamos a sessão de chat passando o histórico
-    const chat = model.startChat({
-      history: formattedHistory,
-    });
-
-    // Enviamos a nova mensagem do usuário
+    const chat = model.startChat({ history: formattedHistory });
     const result = await chat.sendMessage(userMessage);
     
     return result.response.text();
     
   } catch (error) {
-    console.error("Erro no Gemini:", error);
-    return "A transmissão via satélite com a agência falhou... Repita a mensagem, investigador.";
+    console.error("🚨 Erro fatal no Gemini:", error);
+    return "A transmissão via satélite falhou... O suspeito pode estar interferindo no sinal.";
   }
 };
