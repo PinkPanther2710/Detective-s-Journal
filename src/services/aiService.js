@@ -1,26 +1,35 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// Inicializa o SDK do Gemini com a chave do ambiente
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+
 export const getAIResponse = async (userMessage, chatHistory) => {
   try {
-    // Chamamos a rota que criamos na pasta /api
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages: [
-          ...chatHistory,
-          { role: "user", content: userMessage }
-        ]
-      }),
+    // Definimos o modelo (usando a versão mais estável e rápida)
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      systemInstruction: "Você é o Detetive Chefe. Um mentor misterioso e profissional. Use um tom de relatório policial confidencial. Nunca dê a resposta de bandeja, instigue o investigador a pensar."
     });
 
-    const data = await response.json();
+    // O Gemini exige que o histórico tenha o formato { role, parts: [{ text }] }
+    // E os papéis permitidos são apenas "user" ou "model"
+    const formattedHistory = chatHistory.map(msg => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content }]
+    }));
+
+    // Iniciamos a sessão de chat passando o histórico
+    const chat = model.startChat({
+      history: formattedHistory,
+    });
+
+    // Enviamos a nova mensagem do usuário
+    const result = await chat.sendMessage(userMessage);
     
-    if (data.error) throw new Error(data.error);
+    return result.response.text();
     
-    return data.text;
   } catch (error) {
-    console.error("Erro no Proxy da IA:", error);
-    return "A conexão com a central caiu. Tente novamente.";
+    console.error("Erro no Gemini:", error);
+    return "A transmissão via satélite com a agência falhou... Repita a mensagem, investigador.";
   }
 };
